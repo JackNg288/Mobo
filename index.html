@@ -3,92 +3,567 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Bot Control</title>
-    <!-- Bootstrap for mobile-friendly design -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>PowerBall Number Frequency Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { background-color: #f0f2f5; }
-        .log-screen {
-            background-color: #1a1a1a;
-            color: #f0f0f0;
-            font-family: 'Courier New', Courier, monospace;
-            height: 400px;
-            overflow-y: scroll;
-            padding: 15px;
-            border-radius: 8px;
-            white-space: pre-wrap;
-            font-size: 0.8em;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .btn-custom { margin: 5px; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .upload-section {
+            padding: 40px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 15px;
+            padding: 60px 20px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .upload-area:hover {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #28a745;
+            background: #f0fff0;
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            color: #6c757d;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 1.2rem;
+            color: #6c757d;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(0,123,255,0.4);
+        }
+
+        .results-section {
+            padding: 40px;
+            display: none;
+        }
+
+        .results-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .results-title {
+            font-size: 2rem;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .results-subtitle {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .stats-card {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .stats-number {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
+        .stats-label {
+            font-size: 1.1rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .top-numbers {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+        }
+
+        .number-category {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 2px solid #f0f0f0;
+        }
+
+        .category-title {
+            font-size: 1.5rem;
+            margin-bottom: 25px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .main-numbers-title {
+            color: #007bff;
+        }
+
+        .powerball-title {
+            color: #dc3545;
+        }
+
+        .number-list {
+            list-style: none;
+        }
+
+        .number-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .number-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .number-rank {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #6c757d;
+            width: 30px;
+        }
+
+        .number-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 15px;
+        }
+
+        .powerball-number {
+            background: linear-gradient(135deg, #dc3545, #bd2130);
+        }
+
+        .number-stats {
+            text-align: right;
+            flex: 1;
+        }
+
+        .frequency-count {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .frequency-percentage {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 1px solid #f1aeb5;
+            display: none;
+        }
+
+        .success-message {
+            background: #d1edff;
+            color: #0c5460;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 1px solid #b8daff;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .top-numbers {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
-<body class="p-3">
-
+<body>
     <div class="container">
-        <h3 class="text-center mb-4">Bot v8.9.8 Control Panel</h3>
-
-        <!-- Command Buttons -->
-        <div class="text-center mb-4">
-            <button class="btn btn-success btn-custom" onclick="sendCommand('start')">Start</button>
-            <button class="btn btn-danger btn-custom" onclick="sendCommand('stop')">Stop</button>
-            <button class="btn btn-info btn-custom" onclick="sendCommand('status')">Status</button>
-            <button class="btn btn-primary btn-custom" onclick="sendCommand('balance')">Balance</button>
-            <button class="btn btn-warning btn-custom" onclick="sendCommand('positions')">Positions</button>
-            <button class="btn btn-secondary btn-custom" onclick="sendCommand('closeall')">Close All</button>
+        <div class="header">
+            <h1>🎱 PowerBall Frequency Analyzer</h1>
+            <p>Upload your PowerBall Excel file to discover the most frequently drawn winning numbers</p>
         </div>
 
-        <!-- Log Screen -->
-        <h5 class="mt-4">Log Viewer</h5>
-        <div id="logScreen" class="log-screen">
-            Loading logs...
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📊</div>
+                <div class="upload-text">Click here or drag and drop your PowerBall Excel file</div>
+                <button class="upload-btn" type="button">Choose File</button>
+                <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" />
+            </div>
+            
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
         </div>
-        <div class="text-center mt-2">
-            <button class="btn btn-light" onclick="fetchLogs()">Refresh Logs</button>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analyzing your PowerBall data...</p>
+        </div>
+
+        <div class="results-section" id="results">
+            <div class="results-header">
+                <h2 class="results-title">📈 Frequency Analysis Results</h2>
+                <p class="results-subtitle">Based on your PowerBall historical data</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stats-card">
+                    <div class="stats-number" id="totalDraws">0</div>
+                    <div class="stats-label">Total Draws</div>
+                </div>
+                <div class="stats-card">
+                    <div class="stats-number" id="dateRange">-</div>
+                    <div class="stats-label">Date Range</div>
+                </div>
+            </div>
+
+            <div class="top-numbers">
+                <div class="number-category">
+                    <h3 class="category-title main-numbers-title">🔵 Top 10 Main Numbers (1-35)</h3>
+                    <ul class="number-list" id="mainNumbersList"></ul>
+                </div>
+
+                <div class="number-category">
+                    <h3 class="category-title powerball-title">🔴 Top 10 PowerBall Numbers (1-20)</h3>
+                    <ul class="number-list" id="powerballNumbersList"></ul>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        const API_BASE_URL = 'https://covers-municipal-returns-optimal.trycloudflare.com';
+        class PowerBallAnalyzer {
+            constructor() {
+                this.data = null;
+                this.mainNumbersFreq = {};
+                this.powerballFreq = {};
+                this.totalDraws = 0;
+                
+                this.setupEventListeners();
+            }
 
-        // Function to send commands to the backend
-        async function sendCommand(command) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/command/${command}`, {
-                    method: 'POST',
+            setupEventListeners() {
+                const fileInput = document.getElementById('fileInput');
+                const uploadArea = document.getElementById('uploadArea');
+
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) {
+                        this.processFile(e.target.files[0]);
+                    }
                 });
-                const result = await response.json();
-                console.log(result.message);
-                alert(`Command '${command}' sent!`);
-                fetchLogs(); // Refresh logs after a command
-            } catch (error) {
-                console.error('Error sending command:', error);
-                alert(`Failed to send command: ${command}`);
-            }
-        }
 
-        // Function to fetch and display logs
-        async function fetchLogs() {
-            const logScreen = document.getElementById('logScreen');
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/logs`);
-                const result = await response.json();
-                if (result.status === 'success') {
-                    logScreen.textContent = result.logs;
-                    // Auto-scroll to the bottom
-                    logScreen.scrollTop = logScreen.scrollHeight;
-                } else {
-                    logScreen.textContent = `Error fetching logs: ${result.message}`;
+                // Drag and drop functionality
+                uploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.add('dragover');
+                });
+
+                uploadArea.addEventListener('dragleave', () => {
+                    uploadArea.classList.remove('dragover');
+                });
+
+                uploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                    if (e.dataTransfer.files.length > 0) {
+                        this.processFile(e.dataTransfer.files[0]);
+                    }
+                });
+            }
+
+            showError(message) {
+                const errorDiv = document.getElementById('errorMessage');
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                document.getElementById('successMessage').style.display = 'none';
+            }
+
+            showSuccess(message) {
+                const successDiv = document.getElementById('successMessage');
+                successDiv.textContent = message;
+                successDiv.style.display = 'block';
+                document.getElementById('errorMessage').style.display = 'none';
+            }
+
+            showLoading(show = true) {
+                document.getElementById('loading').style.display = show ? 'block' : 'none';
+                document.getElementById('results').style.display = show ? 'none' : 'block';
+            }
+
+            async processFile(file) {
+                try {
+                    this.showLoading(true);
+                    document.getElementById('errorMessage').style.display = 'none';
+                    document.getElementById('successMessage').style.display = 'none';
+
+                    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+                        throw new Error('Please upload an Excel file (.xlsx or .xls)');
+                    }
+
+                    const data = await this.readExcelFile(file);
+                    this.analyzeData(data);
+                    this.displayResults();
+                    
+                    this.showSuccess(`Successfully analyzed ${this.totalDraws} PowerBall draws!`);
+                    this.showLoading(false);
+
+                } catch (error) {
+                    console.error('Error processing file:', error);
+                    this.showError(`Error: ${error.message}`);
+                    this.showLoading(false);
                 }
-            } catch (error) {
-                console.error('Error fetching logs:', error);
-                logScreen.textContent = 'Could not connect to the bot API to fetch logs.';
+            }
+
+            readExcelFile(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                            resolve(jsonData);
+                        } catch (error) {
+                            reject(new Error('Failed to read Excel file. Please make sure it\'s a valid Excel file.'));
+                        }
+                    };
+                    reader.onerror = () => reject(new Error('Failed to read file'));
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+
+            analyzeData(data) {
+                this.mainNumbersFreq = {};
+                this.powerballFreq = {};
+                this.totalDraws = 0;
+
+                // Initialize frequency counters
+                for (let i = 1; i <= 35; i++) {
+                    this.mainNumbersFreq[i] = 0;
+                }
+                for (let i = 1; i <= 20; i++) {
+                    this.powerballFreq[i] = 0;
+                }
+
+                // Skip header row, start from index 1
+                for (let i = 1; i < data.length; i++) {
+                    const row = data[i];
+                    
+                    if (!row || row.length < 4) continue;
+
+                    const mainNumbersStr = row[2]; // Main Numbers column
+                    const powerballNum = parseInt(row[3]); // Powerball column
+
+                    if (mainNumbersStr && typeof mainNumbersStr === 'string') {
+                        // Parse main numbers: "1, 3, 9, 18, 20, 28, 29"
+                        const mainNumbers = mainNumbersStr
+                            .split(',')
+                            .map(n => parseInt(n.trim()))
+                            .filter(n => !isNaN(n) && n >= 1 && n <= 35);
+
+                        // Count main numbers frequency
+                        mainNumbers.forEach(num => {
+                            if (this.mainNumbersFreq[num] !== undefined) {
+                                this.mainNumbersFreq[num]++;
+                            }
+                        });
+
+                        // Count powerball frequency
+                        if (!isNaN(powerballNum) && powerballNum >= 1 && powerballNum <= 20) {
+                            this.powerballFreq[powerballNum]++;
+                        }
+
+                        this.totalDraws++;
+                    }
+                }
+
+                if (this.totalDraws === 0) {
+                    throw new Error('No valid PowerBall data found. Please check your file format.');
+                }
+            }
+
+            displayResults() {
+                // Update stats
+                document.getElementById('totalDraws').textContent = this.totalDraws;
+                document.getElementById('dateRange').textContent = `1 Year`;
+
+                // Get top 10 main numbers
+                const topMainNumbers = Object.entries(this.mainNumbersFreq)
+                    .sort(([,a], [,b]) => b - a)
+                    .slice(0, 10);
+
+                // Get top 10 powerball numbers
+                const topPowerballNumbers = Object.entries(this.powerballFreq)
+                    .sort(([,a], [,b]) => b - a)
+                    .slice(0, 10);
+
+                // Display main numbers
+                const mainNumbersList = document.getElementById('mainNumbersList');
+                mainNumbersList.innerHTML = '';
+                topMainNumbers.forEach(([number, count], index) => {
+                    const percentage = ((count / this.totalDraws) * 100).toFixed(1);
+                    const li = document.createElement('li');
+                    li.className = 'number-item';
+                    li.innerHTML = `
+                        <span class="number-rank">#${index + 1}</span>
+                        <span class="number-value">${number}</span>
+                        <div class="number-stats">
+                            <div class="frequency-count">${count} times</div>
+                            <div class="frequency-percentage">${percentage}%</div>
+                        </div>
+                    `;
+                    mainNumbersList.appendChild(li);
+                });
+
+                // Display powerball numbers
+                const powerballNumbersList = document.getElementById('powerballNumbersList');
+                powerballNumbersList.innerHTML = '';
+                topPowerballNumbers.forEach(([number, count], index) => {
+                    const percentage = ((count / this.totalDraws) * 100).toFixed(1);
+                    const li = document.createElement('li');
+                    li.className = 'number-item';
+                    li.innerHTML = `
+                        <span class="number-rank">#${index + 1}</span>
+                        <span class="number-value powerball-number">${number}</span>
+                        <div class="number-stats">
+                            <div class="frequency-count">${count} times</div>
+                            <div class="frequency-percentage">${percentage}%</div>
+                        </div>
+                    `;
+                    powerballNumbersList.appendChild(li);
+                });
             }
         }
 
-        // Initial log fetch and set up auto-refresh every 10 seconds
+        // Initialize the analyzer when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            fetchLogs();
-            setInterval(fetchLogs, 10000); // Refresh logs every 10 seconds
+            new PowerBallAnalyzer();
         });
     </script>
 </body>
