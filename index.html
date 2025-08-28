@@ -142,10 +142,12 @@
         }
 
         .stats-number {
-            font-size: 3rem;
+            font-size: 2.2rem;
             font-weight: bold;
             color: #007bff;
             margin-bottom: 10px;
+            line-height: 1.2;
+            word-break: break-word;
         }
 
         .stats-label {
@@ -338,7 +340,7 @@
                 </div>
                 <div class="stats-card">
                     <div class="stats-number" id="dateRange">-</div>
-                    <div class="stats-label">Date Range</div>
+                    <div class="stats-label">Time Period</div>
                 </div>
             </div>
 
@@ -429,7 +431,7 @@
                     this.analyzeData(data);
                     this.displayResults();
                     
-                    this.showSuccess(`Successfully analyzed ${this.totalDraws} PowerBall draws!`);
+                    this.showSuccess(`Successfully analyzed ${this.totalDraws} PowerBall draws over ${this.dateRange}!`);
                     this.showLoading(false);
 
                 } catch (error) {
@@ -462,6 +464,8 @@
                 this.mainNumbersFreq = {};
                 this.powerballFreq = {};
                 this.totalDraws = 0;
+                this.dateRange = '';
+                this.validRows = [];
 
                 // Initialize frequency counters
                 for (let i = 1; i <= 35; i++) {
@@ -471,47 +475,122 @@
                     this.powerballFreq[i] = 0;
                 }
 
+                let firstDate = null;
+                let lastDate = null;
+
                 // Skip header row, start from index 1
                 for (let i = 1; i < data.length; i++) {
                     const row = data[i];
                     
                     if (!row || row.length < 4) continue;
 
+                    const drawNumber = row[0]; // Draw No.
+                    const dateStr = row[1]; // Date
                     const mainNumbersStr = row[2]; // Main Numbers column
                     const powerballNum = parseInt(row[3]); // Powerball column
 
-                    if (mainNumbersStr && typeof mainNumbersStr === 'string') {
+                    if (mainNumbersStr && typeof mainNumbersStr === 'string' && dateStr) {
                         // Parse main numbers: "1, 3, 9, 18, 20, 28, 29"
                         const mainNumbers = mainNumbersStr
                             .split(',')
                             .map(n => parseInt(n.trim()))
                             .filter(n => !isNaN(n) && n >= 1 && n <= 35);
 
-                        // Count main numbers frequency
-                        mainNumbers.forEach(num => {
-                            if (this.mainNumbersFreq[num] !== undefined) {
-                                this.mainNumbersFreq[num]++;
+                        // Validate we have 7 main numbers
+                        if (mainNumbers.length === 7) {
+                            // Count main numbers frequency
+                            mainNumbers.forEach(num => {
+                                if (this.mainNumbersFreq[num] !== undefined) {
+                                    this.mainNumbersFreq[num]++;
+                                }
+                            });
+
+                            // Count powerball frequency
+                            if (!isNaN(powerballNum) && powerballNum >= 1 && powerballNum <= 20) {
+                                this.powerballFreq[powerballNum]++;
                             }
-                        });
 
-                        // Count powerball frequency
-                        if (!isNaN(powerballNum) && powerballNum >= 1 && powerballNum <= 20) {
-                            this.powerballFreq[powerballNum]++;
+                            // Track date range
+                            if (!firstDate) {
+                                firstDate = dateStr;
+                            }
+                            lastDate = dateStr;
+
+                            this.validRows.push({
+                                drawNumber: drawNumber,
+                                date: dateStr,
+                                mainNumbers: mainNumbers,
+                                powerball: powerballNum
+                            });
+
+                            this.totalDraws++;
                         }
-
-                        this.totalDraws++;
                     }
+                }
+
+                // Calculate time period
+                if (firstDate && lastDate) {
+                    this.dateRange = this.calculateTimePeriod(firstDate, lastDate);
+                } else {
+                    this.dateRange = `${this.totalDraws} draws`;
                 }
 
                 if (this.totalDraws === 0) {
                     throw new Error('No valid PowerBall data found. Please check your file format.');
+                }
+
+                console.log(`Analyzed ${this.totalDraws} valid draws from ${this.dateRange}`);
+            }
+
+            calculateTimePeriod(firstDateStr, lastDateStr) {
+                try {
+                    // Parse dates like "Thu 26 Dec 2024"
+                    const parseDate = (dateStr) => {
+                        // Remove day of week and parse
+                        const cleanDate = dateStr.replace(/^[A-Za-z]+\s+/, '');
+                        return new Date(cleanDate);
+                    };
+
+                    const startDate = parseDate(lastDateStr); // Last date in file (oldest)
+                    const endDate = parseDate(firstDateStr); // First date in file (newest)
+
+                    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                        return `${this.totalDraws} draws`;
+                    }
+
+                    const diffTime = Math.abs(endDate - startDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    const diffWeeks = Math.floor(diffDays / 7);
+                    const diffMonths = Math.floor(diffDays / 30.44); // Average days per month
+                    const diffYears = Math.floor(diffDays / 365.25);
+
+                    let period = '';
+                    if (diffYears > 0) {
+                        period = `${diffYears} year${diffYears > 1 ? 's' : ''}`;
+                        const remainingMonths = diffMonths - (diffYears * 12);
+                        if (remainingMonths > 0) {
+                            period += `, ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}`;
+                        }
+                    } else if (diffMonths > 0) {
+                        period = `${diffMonths} month${diffMonths > 1 ? 's' : ''}`;
+                    } else if (diffWeeks > 0) {
+                        period = `${diffWeeks} week${diffWeeks > 1 ? 's' : ''}`;
+                    } else {
+                        period = `${diffDays} day${diffDays > 1 ? 's' : ''}`;
+                    }
+
+                    return `${period} (${this.totalDraws} draws)`;
+
+                } catch (error) {
+                    console.error('Error calculating time period:', error);
+                    return `${this.totalDraws} draws`;
                 }
             }
 
             displayResults() {
                 // Update stats
                 document.getElementById('totalDraws').textContent = this.totalDraws;
-                document.getElementById('dateRange').textContent = `1 Year`;
+                document.getElementById('dateRange').textContent = this.dateRange;
 
                 // Get top 10 main numbers
                 const topMainNumbers = Object.entries(this.mainNumbersFreq)
