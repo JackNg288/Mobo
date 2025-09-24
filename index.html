@@ -340,35 +340,6 @@
                 });
             }
 
-            async function fetchWithFailover(polygonUrl, finnhubUrl) {
-                try {
-                    const polygonResponse = await fetch(polygonUrl);
-                    if (polygonResponse.ok) {
-                        return { data: await polygonResponse.json(), source: 'Polygon.io' };
-                    }
-                    if (polygonResponse.status === 429) {
-                        console.warn("Polygon.io API rate limit exceeded. Falling back to Finnhub.");
-                        const finnhubResponse = await fetch(finnhubUrl);
-                        if (!finnhubResponse.ok) {
-                           throw new Error(`Finnhub API Error: Status ${finnhubResponse.status} - ${finnhubResponse.statusText}`);
-                        }
-                        return { data: await finnhubResponse.json(), source: 'Finnhub.io' };
-                    }
-                    throw new Error(`Polygon.io API Error: Status ${polygonResponse.status} - ${polygonResponse.statusText}`);
-                } catch (error) {
-                    console.error("Primary API failed, trying fallback:", error);
-                    try {
-                        const finnhubResponse = await fetch(finnhubUrl);
-                        if (!finnhubResponse.ok) {
-                           throw new Error(`Finnhub API Error: Status ${finnhubResponse.status} - ${finnhubResponse.statusText}`);
-                        }
-                        return { data: await finnhubResponse.json(), source: 'Finnhub.io' };
-                    } catch (finnhubError) {
-                        throw new Error(`All APIs failed. Please try again later. Details: ${finnhubError.message}`);
-                    }
-                }
-            }
-
 
             // Main function to fetch and analyze signals
             async function fetchSignals() {
@@ -392,49 +363,69 @@
                     const fromFormatted = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-${String(fromDate.getDate()).padStart(2, '0')}`;
                     const toFormatted = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-                    // URLs for both APIs
+                    let historicalPrices, newsArticles, currentPrice, apiSource;
+
+                    // Try fetching from Polygon.io first
                     const polygonChartApiUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fromFormatted}/${toFormatted}?adjusted=true&sort=asc&apiKey=${POLYGON_API_KEY}`;
-                    const finnhubChartApiUrl = `https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=D&from=${Math.floor(fromDate.getTime() / 1000)}&to=${Math.floor(today.getTime() / 1000)}&token=${FINNHUB_API_KEY}`;
-                    
                     const polygonNewsApiUrl = `https://api.polygon.io/v2/reference/news?ticker=${ticker}&published_utc.gte=${fromFormatted}&limit=50&apiKey=${POLYGON_API_KEY}`;
-                    const finnhubNewsApiUrl = `https://finnhub.io/api/v1/company-news?symbol=${ticker}&from=${fromFormatted}&to=${toFormatted}&token=${FINNHUB_API_KEY}`;
-
                     const polygonQuoteApiUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`;
-                    const finnhubQuoteApiUrl = `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`;
+                    
+                    try {
+                        const chartResponse = await fetch(polygonChartApiUrl);
+                        const newsResponse = await fetch(polygonNewsApiUrl);
+                        const quoteResponse = await fetch(polygonQuoteApiUrl);
 
-                    // Fetch data using the failover mechanism
-                    const chartResult = await fetchWithFailover(polygonChartApiUrl, finnhubChartApiUrl);
-                    const newsResult = await fetchWithFailover(polygonNewsApiUrl, finnhubNewsApiUrl);
-                    const quoteResult = await fetchWithFailover(polygonQuoteApiUrl, finnhubQuoteApiUrl);
+                        if (!chartResponse.ok || !newsResponse.ok || !quoteResponse.ok) {
+                            throw new Error('Polygon.io API call failed, attempting fallback.');
+                        }
 
-                    // Process chart data from either API
-                    let historicalPrices = [];
-                    if (chartResult.source === 'Polygon.io') {
-                        historicalPrices = chartResult.data.results || [];
-                    } else { // Finnhub
-                        // Correctly handle Finnhub's array-based data format
-                        historicalPrices = (chartResult.data.c || []).map((close, index) => ({
-                            t: (chartResult.data.t[index] || 0) * 1000,
+                        const chartData = await chartResponse.json();
+                        const newsData = await newsResponse.json();
+                        const quoteData = await quoteResponse.json();
+
+                        historicalPrices = chartData.results || [];
+                        newsArticles = newsData.results || [];
+                        currentPrice = quoteData.results[0].c;
+                        apiSource = 'Polygon.io';
+
+                    } catch (polygonError) {
+                        console.warn("Polygon.io fetch failed, trying Finnhub. Error:", polygonError);
+
+                        // Fallback to Finnhub API
+                        const finnhubChartApiUrl = `https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=D&from=${Math.floor(fromDate.getTime() / 1000)}&to=${Math.floor(today.getTime() / 1000)}&token=${FINNHUB_API_KEY}`;
+                        const finnhubNewsApiUrl = `https://finnhub.io/api/v1/company-news?symbol=${ticker}&from=${fromFormatted}&to=${toFormatted}&token=${FINNHUB_API_KEY}`;
+                        const finnhubQuoteApiUrl = `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`;
+
+                        const chartResponse = await fetch(finnhubChartApiUrl);
+                        const newsResponse = await fetch(finnhubNewsApiUrl);
+                        const quoteResponse = await fetch(finnhubQuoteApiUrl);
+
+                        if (!chartResponse.ok || !newsResponse.ok || !quoteResponse.ok) {
+                            throw new Error('Finnhub API call also failed.');
+                        }
+
+                        const chartData = await chartResponse.json();
+                        const newsData = await newsResponse.json();
+                        const quoteData = await quoteResponse.json();
+
+                        // Process Finnhub's array-based data format
+                        historicalPrices = (chartData.c || []).map((close, index) => ({
+                            t: (chartData.t[index] || 0) * 1000,
                             c: close,
                         }));
+                        newsArticles = newsData || [];
+                        currentPrice = quoteData.c;
+                        apiSource = 'Finnhub.io';
                     }
                     
-                    const currentPrice = quoteResult.source === 'Polygon.io' ? quoteResult.data.results[0].c : quoteResult.data.c;
-                    
-                    // Process news data from either API
+                    // --- Common Logic after fetching from either API ---
                     let sentimentScore = 0;
-                    let newsArticles = [];
-                    if (newsResult.source === 'Polygon.io') {
-                        newsArticles = newsResult.data.results || [];
+                    if (newsArticles.length > 0) {
                         newsArticles.forEach(article => {
-                            sentimentScore += getSentiment(article.title);
-                            if (article.description) sentimentScore += getSentiment(article.description);
-                        });
-                    } else { // Finnhub
-                        newsArticles = newsResult.data || [];
-                        newsArticles.forEach(article => {
-                            sentimentScore += getSentiment(article.headline);
-                            if (article.summary) sentimentScore += getSentiment(article.summary);
+                            sentimentScore += getSentiment(article.title || article.headline);
+                            if (article.description || article.summary) {
+                                sentimentScore += getSentiment(article.description || article.summary);
+                            }
                         });
                     }
                     
@@ -446,7 +437,7 @@
                     const combinedSignal = getCombinedSignal(sentimentScore, sma20, sma50);
 
                     const chartCanvasId = `chart-${ticker}-${Date.now()}`;
-                    container.innerHTML = createTradeIdeaCard(ticker, combinedSignal.signal, combinedSignal.reason, newsArticles, currentPrice, chartResult.source);
+                    container.innerHTML = createTradeIdeaCard(ticker, combinedSignal.signal, combinedSignal.reason, newsArticles, currentPrice, apiSource);
                     
                     // Add chart event listeners
                     const chartFilters = document.querySelectorAll('.chart-filter');
@@ -490,7 +481,7 @@
                 
                 try {
                     const chartResult = await fetchWithFailover(polygonChartApiUrl, finnhubChartApiUrl);
-
+                    
                     let historicalPrices = [];
                     if (chartResult.source === 'Polygon.io') {
                         historicalPrices = chartResult.data.results || [];
