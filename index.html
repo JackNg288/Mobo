@@ -86,8 +86,9 @@
             const loadingSpinner = document.getElementById('loading-spinner');
             const tickerInput = document.getElementById('ticker-input');
 
-            // API key from the user. NOTE: This should be on a backend server in production.
-            const API_KEY = 'M426cmntnrT73IDYiKyu_E7TKyLfoSy1';
+            // API keys from the user. NOTE: This should be on a backend server in production.
+            const POLYGON_API_KEY = 'M426cmntnrT73IDYiKyu_E7TKyLfoSy1';
+            const FINNHUB_API_KEY = 'd39nm2hr01qoho9gl3ogd39nm2hr01qoho9gl3p0';
             
             // Simplified financial sentiment keywords for a basic AI analysis
             const positiveWords = ['increase', 'gain', 'growth', 'rise', 'strong', 'positive', 'win', 'acquire', 'launch', 'expand', 'profit', 'surpass', 'success', 'outperform', 'upgrade', 'rally', 'breakthrough', 'record', 'soar', 'expand'];
@@ -156,7 +157,7 @@
             }
 
             // Function to generate the HTML for a single trade idea card
-            function createTradeIdeaCard(ticker, signal, reason, articles, currentPrice) {
+            function createTradeIdeaCard(ticker, signal, reason, articles, currentPrice, apiSource) {
                 let signalClass;
                 if (signal === 'Buy') {
                     signalClass = 'buy';
@@ -177,7 +178,7 @@
                 if (articles.length > 0) {
                     newsListHtml = `<ul class="list-disc list-inside mt-4 text-sm text-gray-400 max-h-48 overflow-y-auto">`;
                     articles.forEach(article => {
-                        newsListHtml += `<li><a href="${article.article_url}" target="_blank" class="text-blue-400 hover:underline">${article.title}</a> (Source: ${article.publisher.name})</li>`;
+                        newsListHtml += `<li><a href="${article.article_url || article.url}" target="_blank" class="text-blue-400 hover:underline">${article.title || article.headline}</a> (Source: ${article.publisher?.name || article.source})</li>`;
                     });
                     newsListHtml += `</ul>`;
                 }
@@ -199,10 +200,13 @@
                             <span class="text-lg font-semibold px-4 py-1 rounded-full text-white ${signalClass}">${signal}</span>
                         </div>
                         <div class="mb-6">
-                            <div class="flex justify-end gap-2 mb-2">
-                                <button class="chart-filter px-3 py-1 text-xs rounded-full bg-gray-700 hover:bg-teal-500 hover:text-white" data-horizon="1M">1M</button>
-                                <button class="chart-filter px-3 py-1 text-xs rounded-full bg-gray-700 hover:bg-teal-500 hover:text-white" data-horizon="3M">3M</button>
-                                <button class="chart-filter px-3 py-1 text-xs rounded-full bg-gray-700 hover:bg-teal-500 hover:text-white" data-horizon="1Y">1Y</button>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs text-gray-500">Data provided by ${apiSource}</span>
+                                <div class="flex gap-2">
+                                    <button class="chart-filter px-3 py-1 text-xs rounded-full bg-gray-700 hover:bg-teal-500 hover:text-white" data-horizon="1M">1M</button>
+                                    <button class="chart-filter px-3 py-1 text-xs rounded-full bg-gray-700 hover:bg-teal-500 hover:text-white" data-horizon="3M">3M</button>
+                                    <button class="chart-filter px-3 py-1 text-xs rounded-full bg-gray-700 hover:bg-teal-500 hover:text-white" data-horizon="1Y">1Y</button>
+                                </div>
                             </div>
                             <div class="relative w-full h-72">
                                 <canvas id="${chartId}" class="w-full h-full rounded-lg border border-gray-700"></canvas>
@@ -336,6 +340,36 @@
                 });
             }
 
+            async function fetchWithFailover(polygonUrl, finnhubUrl, isChartData = false) {
+                try {
+                    const polygonResponse = await fetch(polygonUrl);
+                    if (polygonResponse.status === 429) {
+                        console.warn("Polygon.io API rate limit exceeded. Falling back to Finnhub.");
+                        const finnhubResponse = await fetch(finnhubUrl);
+                        if (!finnhubResponse.ok) {
+                           throw new Error(`Finnhub API Error: Status ${finnhubResponse.status} - ${finnhubResponse.statusText}`);
+                        }
+                        return { data: await finnhubResponse.json(), source: 'Finnhub.io' };
+                    }
+                    if (!polygonResponse.ok) {
+                        throw new Error(`Polygon.io API Error: Status ${polygonResponse.status} - ${polygonResponse.statusText}`);
+                    }
+                    return { data: await polygonResponse.json(), source: 'Polygon.io' };
+                } catch (error) {
+                    console.error("Primary API failed, trying fallback:", error);
+                    try {
+                        const finnhubResponse = await fetch(finnhubUrl);
+                        if (!finnhubResponse.ok) {
+                           throw new Error(`Finnhub API Error: Status ${finnhubResponse.status} - ${finnhubResponse.statusText}`);
+                        }
+                        return { data: await finnhubResponse.json(), source: 'Finnhub.io' };
+                    } catch (finnhubError) {
+                        throw new Error(`All APIs failed. Please try again later. Details: ${finnhubError.message}`);
+                    }
+                }
+            }
+
+
             // Main function to fetch and analyze signals
             async function fetchSignals() {
                 const ticker = tickerInput.value.toUpperCase();
@@ -352,45 +386,57 @@
                                        </div>`;
 
                 try {
-                    // Fetch historical price data for the chart (default 1Y)
                     const today = new Date();
                     const fromDate = new Date();
                     fromDate.setFullYear(today.getFullYear() - 1);
                     const fromFormatted = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-${String(fromDate.getDate()).padStart(2, '0')}`;
                     const toFormatted = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-                    const chartApiUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fromFormatted}/${toFormatted}?adjusted=true&sort=asc&apiKey=${API_KEY}`;
-                    const chartResponse = await fetch(chartApiUrl);
-                    const chartData = await chartResponse.json();
+                    // URLs for both APIs
+                    const polygonChartApiUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fromFormatted}/${toFormatted}?adjusted=true&sort=asc&apiKey=${POLYGON_API_KEY}`;
+                    const finnhubChartApiUrl = `https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=D&from=${Math.floor(fromDate.getTime() / 1000)}&to=${Math.floor(today.getTime() / 1000)}&token=${FINNHUB_API_KEY}`;
                     
-                    if (!chartResponse.ok || chartData.results.length === 0) {
-                        throw new Error(`Price API error for ${ticker}: Status ${chartResponse.status} - ${chartData.error || chartResponse.statusText}.`);
+                    const polygonNewsApiUrl = `https://api.polygon.io/v2/reference/news?ticker=${ticker}&published_utc.gte=${fromFormatted}&limit=50&apiKey=${POLYGON_API_KEY}`;
+                    const finnhubNewsApiUrl = `https://finnhub.io/api/v1/company-news?symbol=${ticker}&from=${fromFormatted}&to=${toFormatted}&token=${FINNHUB_API_KEY}`;
+
+                    const polygonQuoteApiUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`;
+                    const finnhubQuoteApiUrl = `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`;
+
+                    // Fetch data using the failover mechanism
+                    const chartResult = await fetchWithFailover(polygonChartApiUrl, finnhubChartApiUrl);
+                    const newsResult = await fetchWithFailover(polygonNewsApiUrl, finnhubNewsApiUrl);
+                    const quoteResult = await fetchWithFailover(polygonQuoteApiUrl, finnhubQuoteApiUrl);
+
+                    // Process chart data from either API
+                    let historicalPrices = [];
+                    if (chartResult.source === 'Polygon.io') {
+                        historicalPrices = chartResult.data.results || [];
+                    } else { // Finnhub
+                        historicalPrices = chartResult.data.c.map((close, index) => ({
+                            t: chartResult.data.t[index] * 1000,
+                            c: close,
+                        }));
                     }
                     
-                    const historicalPrices = chartData.results || [];
-                    const currentPrice = historicalPrices.length > 0 ? historicalPrices[historicalPrices.length - 1].c : 0;
+                    const currentPrice = quoteResult.source === 'Polygon.io' ? quoteResult.data.results[0].c : quoteResult.data.c;
                     
-                    // Fetch news data
-                    const newsApiUrl = `https://api.polygon.io/v2/reference/news?ticker=${ticker}&published_utc.gte=${fromFormatted}&limit=50&apiKey=${API_KEY}`;
-                    const newsResponse = await fetch(newsApiUrl);
-                    const newsData = await newsResponse.json();
-
-                    if (!newsResponse.ok) {
-                        throw new Error(`News API error for ${ticker}: Status ${newsResponse.status} - ${newsData.error || newsResponse.statusText}.`);
-                    }
-
+                    // Process news data from either API
                     let sentimentScore = 0;
-                    const newsArticles = newsData.results || [];
-                    
-                    if (newsArticles.length > 0) {
+                    let newsArticles = [];
+                    if (newsResult.source === 'Polygon.io') {
+                        newsArticles = newsResult.data.results || [];
                         newsArticles.forEach(article => {
                             sentimentScore += getSentiment(article.title);
-                            if (article.description) {
-                                sentimentScore += getSentiment(article.description);
-                            }
+                            if (article.description) sentimentScore += getSentiment(article.description);
+                        });
+                    } else { // Finnhub
+                        newsArticles = newsResult.data || [];
+                        newsArticles.forEach(article => {
+                            sentimentScore += getSentiment(article.headline);
+                            if (article.summary) sentimentScore += getSentiment(article.summary);
                         });
                     }
-
+                    
                     // Calculate SMAs for technical analysis
                     const sma20 = calculateSMA(historicalPrices, 20);
                     const sma50 = calculateSMA(historicalPrices, 50);
@@ -399,7 +445,7 @@
                     const combinedSignal = getCombinedSignal(sentimentScore, sma20, sma50);
 
                     const chartCanvasId = `chart-${ticker}-${Date.now()}`;
-                    container.innerHTML = createTradeIdeaCard(ticker, combinedSignal.signal, combinedSignal.reason, newsArticles, currentPrice, historicalPrices);
+                    container.innerHTML = createTradeIdeaCard(ticker, combinedSignal.signal, combinedSignal.reason, newsArticles, currentPrice, chartResult.source);
                     
                     // Add chart event listeners
                     const chartFilters = document.querySelectorAll('.chart-filter');
@@ -438,17 +484,22 @@
                 const fromFormatted = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-${String(fromDate.getDate()).padStart(2, '0')}`;
                 const toFormatted = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-                const chartApiUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fromFormatted}/${toFormatted}?adjusted=true&sort=asc&apiKey=${API_KEY}`;
+                const polygonChartApiUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fromFormatted}/${toFormatted}?adjusted=true&sort=asc&apiKey=${POLYGON_API_KEY}`;
+                const finnhubChartApiUrl = `https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=D&from=${Math.floor(fromDate.getTime() / 1000)}&to=${Math.floor(today.getTime() / 1000)}&token=${FINNHUB_API_KEY}`;
                 
                 try {
-                    const chartResponse = await fetch(chartApiUrl);
-                    const chartData = await chartResponse.json();
+                    const chartResult = await fetchWithFailover(polygonChartApiUrl, finnhubChartApiUrl);
 
-                    if (!chartResponse.ok || chartData.results.length === 0) {
-                        throw new Error(`Price API error for ${ticker} (${horizon}): Status ${chartResponse.status} - ${chartData.error || chartResponse.statusText}.`);
+                    let historicalPrices = [];
+                    if (chartResult.source === 'Polygon.io') {
+                        historicalPrices = chartResult.data.results || [];
+                    } else { // Finnhub
+                        historicalPrices = chartResult.data.c.map((close, index) => ({
+                            t: chartResult.data.t[index] * 1000,
+                            c: close,
+                        }));
                     }
 
-                    const historicalPrices = chartData.results || [];
                     const sma20 = calculateSMA(historicalPrices, 20);
                     const sma50 = calculateSMA(historicalPrices, 50);
 
