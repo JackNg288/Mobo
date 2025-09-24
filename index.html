@@ -340,9 +340,12 @@
                 });
             }
 
-            async function fetchWithFailover(polygonUrl, finnhubUrl, isChartData = false) {
+            async function fetchWithFailover(polygonUrl, finnhubUrl) {
                 try {
                     const polygonResponse = await fetch(polygonUrl);
+                    if (polygonResponse.ok) {
+                        return { data: await polygonResponse.json(), source: 'Polygon.io' };
+                    }
                     if (polygonResponse.status === 429) {
                         console.warn("Polygon.io API rate limit exceeded. Falling back to Finnhub.");
                         const finnhubResponse = await fetch(finnhubUrl);
@@ -351,10 +354,7 @@
                         }
                         return { data: await finnhubResponse.json(), source: 'Finnhub.io' };
                     }
-                    if (!polygonResponse.ok) {
-                        throw new Error(`Polygon.io API Error: Status ${polygonResponse.status} - ${polygonResponse.statusText}`);
-                    }
-                    return { data: await polygonResponse.json(), source: 'Polygon.io' };
+                    throw new Error(`Polygon.io API Error: Status ${polygonResponse.status} - ${polygonResponse.statusText}`);
                 } catch (error) {
                     console.error("Primary API failed, trying fallback:", error);
                     try {
@@ -412,8 +412,9 @@
                     if (chartResult.source === 'Polygon.io') {
                         historicalPrices = chartResult.data.results || [];
                     } else { // Finnhub
-                        historicalPrices = chartResult.data.c.map((close, index) => ({
-                            t: chartResult.data.t[index] * 1000,
+                        // Correctly handle Finnhub's array-based data format
+                        historicalPrices = (chartResult.data.c || []).map((close, index) => ({
+                            t: (chartResult.data.t[index] || 0) * 1000,
                             c: close,
                         }));
                     }
@@ -494,8 +495,8 @@
                     if (chartResult.source === 'Polygon.io') {
                         historicalPrices = chartResult.data.results || [];
                     } else { // Finnhub
-                        historicalPrices = chartResult.data.c.map((close, index) => ({
-                            t: chartResult.data.t[index] * 1000,
+                        historicalPrices = (chartResult.data.c || []).map((close, index) => ({
+                            t: (chartResult.data.t[index] || 0) * 1000,
                             c: close,
                         }));
                     }
